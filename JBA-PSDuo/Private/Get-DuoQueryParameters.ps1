@@ -21,7 +21,7 @@ function Get-DuoQueryParameters {
 
         $ret.Sort([System.StringComparer]::Ordinal)
         [string]$canon_params = [string]::Join("&", ($ret.ToArray()))
-        Write-Debug $canon_params
     }
+    Write-Debug "Canonicalized Parameters:$($canon_params):"
     return $canon_params
 }

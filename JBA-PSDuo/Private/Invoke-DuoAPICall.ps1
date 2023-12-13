@@ -5,7 +5,8 @@ function Invoke-DuoAPICall {
         [String]$method,
         [String]$resource,
         [hashtable]$AuthHeaders,
-        [String]$canon_params
+        [String]$canon_params,
+        [string]$bodyformat = 'encoded'
     )
 
     $headers = @{
@@ -29,7 +30,7 @@ function Invoke-DuoAPICall {
     Write-Debug ('[' + $request.Method + " " + $request.RequestUri + ']')
 
     $request.Accept = $encoding
-    $request.UserAgent = "Duo-PSModule/0.1"
+    $request.UserAgent = "JBA-PSDuo/0.1"
 
     $request.AutomaticDecompression = @([System.Net.DecompressionMethods]::Deflate, [System.Net.DecompressionMethods]::GZip)
     
@@ -39,8 +40,13 @@ function Invoke-DuoAPICall {
  
     if ( ($method.ToUpper() -eq "POST") -or ($method.ToUpper() -eq "PUT") ) {
         #make key value list, not json when done
+        if ($bodyformat -eq 'encoded') {
+            $request.ContentType = 'application/x-www-form-urlencoded'
+        }
+        else {
+            $request.ContentType = $bodyformat
+        }
         $bytes = [System.Text.Encoding]::UTF8.GetBytes($canon_params)
-        $request.ContentType = 'application/x-www-form-urlencoded'
         $request.ContentLength = $bytes.Length
                  
         [System.IO.Stream]$outputStream = [System.IO.Stream]$request.GetRequestStream()

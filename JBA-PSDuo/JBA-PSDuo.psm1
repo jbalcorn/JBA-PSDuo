@@ -42,5 +42,5 @@ Get-ChildItem $PSScriptRoot\ -Recurse -Include '*.ps1' -Exclude '*.ps1xml' |
 
 	}
 
-[System.Version]$Version = '0.1'
+[System.Version]$Version = '0.2'
 Set-Variable -Name ExternalVersion -Value $Version -Scope Script

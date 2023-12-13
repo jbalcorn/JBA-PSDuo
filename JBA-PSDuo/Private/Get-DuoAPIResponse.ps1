@@ -3,33 +3,67 @@ function Get-DuoAPIResponse {
     (
         $duoKey,
         [string]$method,
+        [string]$bodyformat = 'encoded',
         [string]$path,
+        [Int32]$sig_version = 2,
         [hashtable]$parameters
     )
-	Add-Type -AssemblyName System.Web
+    Add-Type -AssemblyName System.Web
 	
     $results = New-Object System.Collections.ArrayList
-    do {
-        $canon_params = Get-DuoQueryParameters -parameters $parameters
-    
-        [string]$query = ""
 
-        if (($method.ToUpper() -eq 'GET') -or ($method.ToUpper() -eq 'DELETE')) {
-            if ($parameters.Count -gt 0) {
-                $query = "?" + $canon_params
-            }
+    $canon_params = Get-DuoQueryParameters -parameters $parameters
+    
+    [string]$query = ""
+    [string]$body = $null
+
+    if (($method.ToUpper() -eq 'GET') -or ($method.ToUpper() -eq 'DELETE')) {
+        if ($parameters.Count -gt 0) {
+            $query = "?" + $canon_params
+        }
+    }
+    if ($method.ToUpper() -eq 'POST' -or $method.ToUpper() -eq 'PUT') {
+        throw "Use Invoke-DuoUpdate for updates"
+    }
+
+    $url = "https://$($duoKey.apiHost)$($path)$($query)"
+
+    do {
+        [string]$date_string = (Get-Date).ToUniversalTime().ToString("ddd, dd MMM yyyy HH:mm:ss -0000", ([System.Globalization.CultureInfo]::InvariantCulture))
+        $AuthHeaders =
+        @{
+            "X-Duo-Date" = $date_string
         }
 
-        $url = "https://$($duoKey.apiHost)$($path)$($query)"
-        [string]$date_string = (Get-Date).ToUniversalTime().ToString("ddd, dd MMM yyyy HH:mm:ss -0000", ([System.Globalization.CultureInfo]::InvariantCulture))
         #
         ## Generate the AuthN Header
         #
     
-        [string[]]$lines = @($date_string.Trim(), $method.ToUpperInvariant().Trim(), $duoKey.apihost.ToLower().Trim(), $path.Trim(), $canon_params.Trim())
+        if ($sig_version -eq 1) {
+            [string[]]$lines = @($method.ToUpperInvariant().Trim(), $duoKey.apihost.ToLower().Trim(), $path.Trim(), $canon_params.Trim())
+        }
+        elseif ($sig_version -eq 2) {
+            [string[]]$lines = @($date_string.Trim(), $method.ToUpperInvariant().Trim(), $duoKey.apihost.ToLower().Trim(), $path.Trim(), $canon_params.Trim())
+        }
+        elseif ($sig_version -eq 4) {
+            # $sig_version 4 is json only
+            $body_hash = Get-DuoHash -str $body
+            [string[]]$lines = @($date_string.Trim(), $method.ToUpperInvariant().Trim(), $duoKey.apihost.ToLower().Trim(), $path.Trim(), $canon_params.Trim(), $body_hash)
+        }
+        elseif ($sig_version -eq 5) {
+            $body_hash = Get-DuoHash -str $body
+            $canon_x_duo_headers = Get-CanonicalizedHeaders -headers $AuthHeaders
+            [string[]]$lines = @($date_string.Trim(), $method.ToUpperInvariant().Trim(), $duoKey.apihost.ToLower().Trim(), $path.Trim(), $canon_params.Trim(), $body_hash, $canon_x_duo_headers)
+        }
         [string]$canon = [string]::Join("`n", $lines)
+        Write-Debug "Canonicalized String for Signature:`n$($canon)`n====="
 
-        $hmacsha1 = New-Object System.Security.Cryptography.HMACSHA1
+        if ($sig_version -lt 4) {
+            $hmacsha1 = New-Object System.Security.Cryptography.HMACSHA1
+        }
+        else {
+            $hmacsha1 = New-Object System.Security.Cryptography.HMACSHA512
+        }
         [byte[]]$data_bytes = [System.Text.Encoding]::UTF8.GetBytes($canon)
         [byte[]]$key_bytes = [System.Text.Encoding]::UTF8.GetBytes([Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR( (ConvertTo-SecureString -string ($duoKey.sKeyEnc).ToString()) ) ))
         $hmacsha1.Key = $key_bytes
@@ -43,16 +77,13 @@ function Get-DuoAPIResponse {
 
         [string]$authN = "Basic $([System.Convert]::ToBase64String($plainText_bytes))"
 
-        $AuthHeaders =
-        @{
-            "X-Duo-Date"    = $date_string
-            "Authorization" = $authN
-        }
+        $AuthHeaders['Authorization'] = $authN
+
         $result = $null
         $metadata = $null
         $response = $null
         try {
-            $result = Invoke-DuoAPICall -method $method -resource $url -AuthHeaders $AuthHeaders -canon_params $canon_params
+            $result = Invoke-DuoAPICall -method $method -resource $url -AuthHeaders $AuthHeaders -canon_params $canon_params -bodyformat $bodyformat
         }
         catch {
             if ($_.exception.message -match "42901") {
@@ -78,11 +109,12 @@ function Get-DuoAPIResponse {
             $done = $false
         }
         elseif ($result.stat -eq 'OK' -and $null -eq $metadata) {
-            $results.AddRange($response)
+            $results = $response
             $done = $true
         } 
         elseif ($null -ne $metadata -and $null -ne $metadata.next_offset) {
             Write-Verbose "Partial Response, $($response.count) records, last timestamp: $(($response | Select -Last 1).isotimestamp)"
+            _write-Log "Received $($response.count) of $($metadata.total_objects)"
             $results.AddRange($response)
             if ($path -match "/v2") {
                 $parameters["next_offset"] = $metadata.next_offset -join ","
