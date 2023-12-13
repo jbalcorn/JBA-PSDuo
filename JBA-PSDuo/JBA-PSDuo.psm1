@@ -9,38 +9,26 @@
 
 .OUTPUTS
 #>
-[CmdletBinding()]
-param(
+#Get public and private function definition files.
+    $Public  = @( Get-ChildItem -Path $PSScriptRoot\Public\*.ps1 -ErrorAction SilentlyContinue )
+    $Private = @( Get-ChildItem -Path $PSScriptRoot\Private\*.ps1 -ErrorAction SilentlyContinue )
 
-	[bool]$DotSourceModule = $false
+#Dot source the files
+    Foreach($import in @($Public + $Private))
+    {
+        Try
+        {
+            . $import.fullname
+        }
+        Catch
+        {
+            Write-Error -Message "Failed to import function $($import.fullname): $_"
+        }
+    }
 
-)
+# Here I might...
+    # Read in or create an initial config file and variable
+    # Export Public functions ($Public.BaseName) for WIP modules
+    # Set variables visible to the module and its functions only
 
-#Get function files
-Get-ChildItem $PSScriptRoot\ -Recurse -Include '*.ps1' -Exclude '*.ps1xml' |
-
-	ForEach-Object {
-
-		if ($DotSourceModule) {
-			. $_.FullName
-		} else {
-			$ExecutionContext.InvokeCommand.InvokeScript(
-				$false,
-				(
-					[scriptblock]::Create(
-						[io.file]::ReadAllText(
-							$_.FullName,
-							[Text.Encoding]::UTF8
-						)
-					)
-				),
-				$null,
-				$null
-			)
-
-		}
-
-	}
-
-[System.Version]$Version = '0.2'
-Set-Variable -Name ExternalVersion -Value $Version -Scope Script
+Export-ModuleMember -Function $Public.Basename
