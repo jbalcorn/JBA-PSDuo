@@ -6,6 +6,7 @@ function Invoke-DuoAPICall {
         [String]$resource,
         [hashtable]$AuthHeaders,
         [String]$canon_params,
+        [string]$body,
         [string]$bodyformat = 'encoded'
     )
 
@@ -46,7 +47,7 @@ function Invoke-DuoAPICall {
         else {
             $request.ContentType = $bodyformat
         }
-        $bytes = [System.Text.Encoding]::UTF8.GetBytes($canon_params)
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes($body)
         $request.ContentLength = $bytes.Length
                  
         [System.IO.Stream]$outputStream = [System.IO.Stream]$request.GetRequestStream()

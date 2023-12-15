@@ -1,4 +1,4 @@
-function Get-DuoAPIResponse {
+function Invoke-DuoUpdate {
     Param
     (
         $duoKey,
@@ -6,7 +6,8 @@ function Get-DuoAPIResponse {
         [string]$bodyformat = 'encoded',
         [string]$path,
         [Int32]$sig_version = 2,
-        [hashtable]$parameters
+        [hashtable]$parameters,
+        [string]$body
     )
     Add-Type -AssemblyName System.Web
 	
@@ -15,17 +16,10 @@ function Get-DuoAPIResponse {
     $canon_params = Get-DuoQueryParameters -parameters $parameters
     
     [string]$query = ""
-    [string]$body = $null
 
     if (($method.ToUpper() -eq 'GET') -or ($method.ToUpper() -eq 'DELETE')) {
-        if ($parameters.Count -gt 0) {
-            $query = "?" + $canon_params
-        }
+        throw "Use Get-DuoAPIResponse for GET or DELETE"
     }
-    if ($method.ToUpper() -eq 'POST' -or $method.ToUpper() -eq 'PUT') {
-        throw "Use Invoke-DuoUpdate for updates"
-    }
-
     $url = "https://$($duoKey.apiHost)$($path)$($query)"
 
     do {
@@ -83,7 +77,10 @@ function Get-DuoAPIResponse {
         $metadata = $null
         $response = $null
         try {
-            $result = Invoke-DuoAPICall -method $method -resource $url -AuthHeaders $AuthHeaders -canon_params $canon_params -bodyformat $bodyformat
+            Write-Verbose "Autheaders: $($AuthHeaders | Out-String)"
+            Write-Verbose "Canon_params: $($canon_params)"
+            Write-Verbose "Body: $($body)"
+            $result = Invoke-DuoAPICall -method $method -resource $url -AuthHeaders $AuthHeaders -canon_params $canon_params -body $body -bodyformat $bodyformat
         }
         catch {
             if ($_.exception.message -match "42901") {
